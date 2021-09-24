@@ -98,50 +98,8 @@ void loop()
 
     delay(20000);  // Wait 20 seconds between transmits, could also 'sleep' here!
 
-    // Message Types
-    String messageTypeTemperature = String(OwlWaveMessageTypes::TEMPERATURE) + "=";
-    String messageTypeHumidity = String(OwlWaveMessageTypes::HUMIDITY) + "=";
-    String messageTypePressure = String(OwlWaveMessageTypes::PRESSURE) + "=";
-    String messageTypeGas = String(OwlWaveMessageTypes::GAS) + "=";
-    String messageSep = String(OW_MESSAGE_SEPERATOR);
-
-    char buffer_msgTemperature[3];
-    char buffer_msgHumidity[3];
-    char buffer_msgPressure[3];
-    char buffer_msgGas[3];
-    char buffer_sep[2];
-
-    messageSep.toCharArray(buffer_sep, 2);
-    messageTypeTemperature.toCharArray(buffer_msgTemperature, 3);
-    messageTypeHumidity.toCharArray(buffer_msgHumidity, 3);
-    messageTypePressure.toCharArray(buffer_msgPressure, 3);
-    messageTypeGas.toCharArray(buffer_msgGas, 3);
-
-    char buffer_temperature[6];
-    char buffer_humidity[6];
-    char buffer_pressure[6];
-    char buffer_gas[6];
-    char buffer[46] = "";
- 
-    strcat(buffer, buffer_msgTemperature);
-    //4 is mininum width, 2 is precision; float value is copied onto buff
-    dtostrf(bme.temperature, 4, 2, buffer_temperature); // C
-    strcat(buffer, buffer_temperature);
-    strcat(buffer, buffer_sep);
-
-    strcat(buffer, buffer_msgHumidity);
-    dtostrf(bme.humidity, 4, 2, buffer_humidity); //%
-    strcat(buffer, buffer_humidity);
-    strcat(buffer, buffer_sep);
-    
-    strcat(buffer, buffer_msgPressure);
-    dtostrf((bme.pressure / 100.0), 6, 2, buffer_pressure); //hPa
-    strcat(buffer, buffer_pressure);
-    strcat(buffer, buffer_sep);
-    
-    strcat(buffer, buffer_msgGas);
-    dtostrf((bme.gas_resistance / 1000.0), 6, 2, buffer_gas); //KOhms
-    strcat(buffer, buffer_gas);
+    char buffer[46] = ""; 
+    owController.getBMEMessage(bme.temperature, bme.humidity, bme.pressure, bme.gas_resistance).toCharArray(buffer, 46);
 
     Serial.print("Sending "); Serial.println(buffer);
     
