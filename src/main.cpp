@@ -96,25 +96,7 @@ void loop()
       return;
     }
 
-    // Serial.print("Temperature = ");
-    // Serial.print(bme.temperature);
-    // Serial.println(" *C");
-
-    // Serial.print("Pressure = ");
-    // Serial.print(bme.pressure / 100.0);
-    // Serial.println(" hPa");
-
-    // Serial.print("Humidity = ");
-    // Serial.print(bme.humidity);
-    // Serial.println(" %");
-
-    // Serial.print("Gas = ");
-    // Serial.print(bme.gas_resistance / 1000.0);
-    // Serial.println(" KOhms");
-
-    // Serial.println();
-
-    //delay(1000);  // Wait 1 second between transmits, could also 'sleep' here!
+    delay(20000);  // Wait 20 seconds between transmits, could also 'sleep' here!
 
     // Message Types
     String messageTypeTemperature = String(OwlWaveMessageTypes::TEMPERATURE) + "=";
@@ -139,7 +121,7 @@ void loop()
     char buffer_humidity[6];
     char buffer_pressure[6];
     char buffer_gas[6];
-    char buffer[46] = " ";
+    char buffer[46] = "";
  
     strcat(buffer, buffer_msgTemperature);
     //4 is mininum width, 2 is precision; float value is copied onto buff
