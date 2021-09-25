@@ -17,27 +17,36 @@
   #define RFM69_INT     7
   #define RFM69_RST     4
   #define LED           13
+  #define HALLRAIN      1
 #endif
 
 // Singleton instance of the radio driver
 RH_RF69 rf69(RFM69_CS, RFM69_INT);
 
 int16_t packetnum = 0;  // packet counter, we increment per xmission
+int32_t rainTips = 0;
 
 #define BME_SCK 13
 #define BME_MISO 12
 #define BME_MOSI 11
 #define BME_CS 10
 
-#define SEALEVELPRESSURE_HPA (1013.25)
-
 Adafruit_BME680 bme; // I2C
 OwlWaveController owController;
+
+void hallRainTipISM()
+{
+    rainTips++;
+}
 
 void setup() 
 {
     Serial.begin(9600);
     Serial.println(F("BME680 test"));
+
+    pinMode(HALLRAIN, INPUT_PULLUP);
+    pinMode(LED, OUTPUT);
+    attachInterrupt(digitalPinToInterrupt(HALLRAIN), hallRainTipISM, RISING);
 
     if (!bme.begin()) 
     {
@@ -51,9 +60,6 @@ void setup()
     bme.setPressureOversampling(BME680_OS_4X);
     bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
     bme.setGasHeater(320, 150); // 320*C for 150 ms
-
-    Serial.println("Feather RFM69 TX Test!");
-    Serial.println();
 
     // manual reset
     digitalWrite(RFM69_RST, HIGH);
@@ -82,8 +88,6 @@ void setup()
     uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
                       0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
     rf69.setEncryptionKey(key);
-    
-    pinMode(LED, OUTPUT);
 
     Serial.print("RFM69 radio @");  Serial.print((int)RF69_FREQ);  Serial.println(" MHz");
 }
@@ -92,44 +96,42 @@ void loop()
 {
     if (! bme.performReading()) 
     {
-      Serial.println("Failed to perform reading :(");
-      return;
+        Serial.println("Failed to perform reading :(");
+        return;
     }
 
-    delay(20000);  // Wait 20 seconds between transmits, could also 'sleep' here!
+    delay(2000);  // Wait 20 seconds between transmits, could also 'sleep' here!
 
     char buffer[46] = ""; 
     owController.getBMEMessage(bme.temperature, bme.humidity, bme.pressure, bme.gas_resistance).toCharArray(buffer, 46);
-
-    Serial.print("Sending "); Serial.println(buffer);
     
+    Serial.print("Sending "); Serial.println(buffer);
+    Serial.print("Rain Tips "); Serial.println(rainTips);
     // Send a message!
     rf69.send((uint8_t *)buffer, strlen(buffer));
     rf69.waitPacketSent();
     owController.blink(LED, 50, 3);
 
-    // Now wait for a reply
-    uint8_t buf[RH_RF69_MAX_MESSAGE_LEN];
-    uint8_t len = sizeof(buf);
+    // // Now wait for a reply
+    // uint8_t buf[RH_RF69_MAX_MESSAGE_LEN];
+    // uint8_t len = sizeof(buf);
 
-    if (rf69.waitAvailableTimeout(500))  
-    { 
-        // Should be a reply message for us now   
-        if (rf69.recv(buf, &len)) 
-        {
-          Serial.print("Got a reply: ");
-          Serial.println((char*)buf);
-          //Blink(LED, 50, 3); //blink LED 3 times, 50ms between blinks
-        } 
-        else 
-        {
-          Serial.println("Receive failed");
-        }
-    } 
-    else 
-    {
-      Serial.println("No reply, is another RFM69 listening?");
-    }
-
-    delay(2000);
+    // if (rf69.waitAvailableTimeout(500))  
+    // { 
+    //     // Should be a reply message for us now   
+    //     if (rf69.recv(buf, &len)) 
+    //     {
+    //       Serial.print("Got a reply: ");
+    //       Serial.println((char*)buf);
+    //       //Blink(LED, 50, 3); //blink LED 3 times, 50ms between blinks
+    //     } 
+    //     else 
+    //     {
+    //       Serial.println("Receive failed");
+    //     }
+    // } 
+    // else 
+    // {
+    //   Serial.println("No reply, is another RFM69 listening?");
+    // }
 }
