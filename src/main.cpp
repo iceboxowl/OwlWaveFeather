@@ -6,47 +6,33 @@
 #include <RH_RF69.h>
 #include "ow_message_types.h"
 #include "ow_controller.h"
+#include "ow_global.h"
 
-/************ Radio Setup ***************/
-
-// Change to 434.0 or other frequency, must match RX's freq!
-#define RF69_FREQ 915.0
-
-#if defined (__AVR_ATmega32U4__) // Feather 32u4 w/Radio
-  #define RFM69_CS      8
-  #define RFM69_INT     7
-  #define RFM69_RST     4
-  #define LED           13
-  #define HALLRAIN      1
-#endif
-
-// Singleton instance of the radio driver
-RH_RF69 rf69(RFM69_CS, RFM69_INT);
-
-int16_t packetnum = 0;  // packet counter, we increment per xmission
-int32_t rainTips = 0;
-
-#define BME_SCK 13
-#define BME_MISO 12
-#define BME_MOSI 11
-#define BME_CS 10
-
+// -*-*-*-*-*-*-*-*-*-*-*-*-*-* //
+//      Class Creation          //
+// -*-*-*-*-*-*-*-*-*-*-*-*-*-* //
 Adafruit_BME680 bme; // I2C
-OwlWaveController owController;
+OwlWaveController owController; // For handling all logic
+// -*-*-*-*-*-*-*-*-*-*-*-*-*-* //
 
-void hallRainTipISM()
+uint8_t loopCount;      // How many times our loop iteration has run, within our MAX_LOOP_CYLE.
+
+// ISM's must be defined here, but can make calls into our Controller class.
+void hallRainISM()
 {
-    rainTips++;
+    owController.onRainTip();
 }
 
 void setup() 
 {
     Serial.begin(9600);
     Serial.println(F("BME680 test"));
-
-    pinMode(HALLRAIN, INPUT_PULLUP);
+    
     pinMode(LED, OUTPUT);
-    attachInterrupt(digitalPinToInterrupt(HALLRAIN), hallRainTipISM, RISING);
+    pinMode(HALL_RAIN, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(HALL_RAIN), hallRainISM, RISING);
+
+    owController.setupRadio();
 
     if (!bme.begin()) 
     {
@@ -66,51 +52,36 @@ void setup()
     delay(10);
     digitalWrite(RFM69_RST, LOW);
     delay(10);
-    
-    if (!rf69.init()) 
-    {
-      Serial.println("RFM69 radio init failed");
-      while (1);
-    }
-    Serial.println("RFM69 radio init OK!");
-    // Defaults after init are 434.0MHz, modulation GFSK_Rb250Fd250, +13dbM (for low power module)
-    // No encryption
-    if (!rf69.setFrequency(RF69_FREQ)) 
-    {
-      Serial.println("setFrequency failed");
-    }
-
-    // If you are using a high power RF69 eg RFM69HW, you *must* set a Tx power with the
-    // ishighpowermodule flag set like this:
-    rf69.setTxPower(20, true);  // range from 14-20 for power, 2nd arg must be true for 69HCW
-
-    // The encryption key has to be the same as the one in the server
-    uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-                      0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
-    rf69.setEncryptionKey(key);
-
-    Serial.print("RFM69 radio @");  Serial.print((int)RF69_FREQ);  Serial.println(" MHz");
 }
 
 void loop() 
 {
-    if (! bme.performReading()) 
+    loopCount++;
+
+    // If loopCount(Seconds) has surpassed our MAX_LOOP_CYCLE send our bme message.
+    if (loopCount > MAX_LOOP_CYCLE)
     {
-        Serial.println("Failed to perform reading :(");
-        return;
+        owController.calculateRainRate();
+        
+        if (bme.performReading()) // Check to make sure our reading succeeds before sending.
+        {
+            owController.sendBMEMessage(bme.temperature, bme.humidity, bme.pressure, bme.gas_resistance);
+        }
+        else
+        {
+            Serial.println("Failed to perform reading :(");
+        }
+
+        owController.sendRainMessage();
+        loopCount = 0;
     }
 
-    delay(2000);  // Wait 20 seconds between transmits, could also 'sleep' here!
+    delay(1000); // Pause so our loop is done every second.
 
-    char buffer[46] = ""; 
-    owController.getBMEMessage(bme.temperature, bme.humidity, bme.pressure, bme.gas_resistance).toCharArray(buffer, 46);
-    
-    Serial.print("Sending "); Serial.println(buffer);
-    Serial.print("Rain Tips "); Serial.println(rainTips);
     // Send a message!
-    rf69.send((uint8_t *)buffer, strlen(buffer));
-    rf69.waitPacketSent();
-    owController.blink(LED, 50, 3);
+    // rf69.send((uint8_t *)buffer, strlen(buffer));
+    // rf69.waitPacketSent();
+    // owController.blink(LED, 50, 3);
 
     // // Now wait for a reply
     // uint8_t buf[RH_RF69_MAX_MESSAGE_LEN];
@@ -134,4 +105,6 @@ void loop()
     // {
     //   Serial.println("No reply, is another RFM69 listening?");
     // }
+
+      // Wait 20 seconds between transmits, could also 'sleep' here!
 }
