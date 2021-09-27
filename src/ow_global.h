@@ -1,13 +1,11 @@
 #ifndef OWLWAVE_GLOBAL_H
 #define OWLWAVE_GLOBAL_H
 
-#if defined (__AVR_ATmega32U4__) // Feather 32u4 w/Radio
-  #define RFM69_CS      8
-  #define RFM69_INT     7
-  #define RFM69_RST     4
-  #define LED           13
-  #define HALL_RAIN      1
-#endif
+#define RFM69_CS        10      // "B"
+#define RFM69_RST       11      // "A"
+#define RFM69_INT       6       // "D"
+#define LED             13
+#define HALL_RAIN       1
 
 // Change to 434.0 or other frequency, must match RX's freq!
 #define RF69_FREQ 915.0

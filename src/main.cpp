@@ -16,6 +16,7 @@ OwlWaveController owController; // For handling all logic
 // -*-*-*-*-*-*-*-*-*-*-*-*-*-* //
 
 uint8_t loopCount;      // How many times our loop iteration has run, within our MAX_LOOP_CYLE.
+uint32_t upTime;        // How many seconds our device has been on for.
 
 // ISM's must be defined here, but can make calls into our Controller class.
 void hallRainISM()
@@ -61,8 +62,9 @@ void loop()
     // If loopCount(Seconds) has surpassed our MAX_LOOP_CYCLE send our bme message.
     if (loopCount > MAX_LOOP_CYCLE)
     {
+        Serial.print("Up Time "); Serial.print(upTime); Serial.println("s");
         owController.calculateRainRate();
-        
+
         if (bme.performReading()) // Check to make sure our reading succeeds before sending.
         {
             owController.sendBMEMessage(bme.temperature, bme.humidity, bme.pressure, bme.gas_resistance);
@@ -76,6 +78,7 @@ void loop()
         loopCount = 0;
     }
 
+    upTime++;
     delay(1000); // Pause so our loop is done every second.
 
     // Send a message!
