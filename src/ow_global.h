@@ -8,7 +8,7 @@
 #define HALL_RAIN       1
 
 // Change to 434.0 or other frequency, must match RX's freq!
-#define RF69_FREQ 915.0
+#define RF69_FREQ 915.69
 #define RAIN_TIP_AMOUNT 0.01 // Each rain tip is equal to this amount.
 
 #define BME_SCK 13

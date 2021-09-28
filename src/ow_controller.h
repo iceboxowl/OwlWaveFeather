@@ -15,7 +15,6 @@ public:
     void blink(byte PIN, byte DELAY_MS, byte loops);
     void sendBMEMessage(float temperature, float humidity, uint32_t pressure, uint32_t gas);
     void sendRainMessage(); 
-    void loop();
     
 private:
     // -*-*-*-*-*-*-*-*-*-*-*-*-*-* //

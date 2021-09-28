@@ -1,11 +1,6 @@
 #include "ow_controller.h"
 #include "ow_message_types.h"
 
-void OwlWaveController::loop()
-{
-    
-}
-
 void OwlWaveController::calculateRainRate()
 {
     // First check if our millis() has rolled over (Happens once every 49 days)

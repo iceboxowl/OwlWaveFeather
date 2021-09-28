@@ -7,13 +7,18 @@ class OwlWaveMessageTypes
 {
 public:
     enum MessageTypes {
-        TEMPERATURE     = 0,
-        HUMIDITY        = 1,
-        PRESSURE        = 2,
-        GAS             = 3,
-        RAINTIPS        = 4,
-        RAINRATE        = 5,
-        AIRQUALITY      = 6
+        SIGNAL_STRENGTH         = 0, // dBm signal strength of last message.
+        TEMPERATURE             = 1,
+        HUMIDITY                = 2,
+        PRESSURE                = 3,
+        GAS                     = 4,
+        RAINTIPS                = 5,
+        RAINRATE                = 6,
+        WIND_DIRECTION          = 7,
+        WIND_SPEED              = 8,
+        AIRQUALITY_PM2_5        = 9,
+        AIRQUALITY_PM5          = 10,
+        AIRQUALITY_PM10         = 11,
     };
 };
 
