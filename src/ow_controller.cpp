@@ -1,6 +1,8 @@
 #include "ow_controller.h"
 #include "ow_message_types.h"
 
+char output[256];
+
 void OwlWaveController::calculateRainRate()
 {
     // First check if our millis() has rolled over (Happens once every 49 days)
@@ -75,6 +77,17 @@ void OwlWaveController::setupRadio()
     Serial.print("RFM69 radio @");  Serial.print((int)RF69_FREQ);  Serial.println(" MHz");
 }
 
+void OwlWaveController::setupAQSensor()
+{
+    // Initialize the sensor with the serial device
+    // that it's connected to. Hardware Serial1 is the
+    // default, if no parameter is provided to init()
+
+    Serial1.begin(9600);    // Note: 9600 baud
+    m_sensor.init(&Serial1);
+    //m_sensor.debug = true;
+}
+
 void OwlWaveController::blink(byte PIN, byte DELAY_MS, byte loops) 
 {
     for (byte i=0; i<loops; i++)  
@@ -103,6 +116,63 @@ void OwlWaveController::sendRainMessage()
     String messageTypeRainRate = String(OwlWaveMessageTypes::RAINRATE) + "=" + String(m_rainRate, 4);
 
     sendMessage(messageTypeRainTips + messageTypeRainRate);
+}
+
+void OwlWaveController::sendAQMessage()
+{
+    // Use updateFrame() to read in sensor data in your
+    // loop until hasNewData() returns true.
+    m_sensor.updateFrame();
+
+    // Note: once updateFrame() is called, all data is
+    // invalid until hasNewData() returns true.
+    if (m_sensor.hasNewData())
+    {
+        String messageTypePM1 = String(OwlWaveMessageTypes::AIRQUALITY_PM1) + "=" + String(m_sensor.getPM_1_0()) + String(OW_MESSAGE_SEPERATOR);
+        String messageTypePM2_5 = String(OwlWaveMessageTypes::AIRQUALITY_PM2_5) + "=" + String(m_sensor.getPM_2_5()) + String(OW_MESSAGE_SEPERATOR);
+        String messageTypePM10 = String(OwlWaveMessageTypes::AIRQUALITY_PM10) + "=" + String(m_sensor.getPM_10_0());
+
+        sendMessage(messageTypePM1 + messageTypePM2_5 + messageTypePM10);
+    }
+}
+
+void OwlWaveController::debugAQ()
+{
+        // Use updateFrame() to read in sensor data in your
+    // loop until hasNewData() returns true.
+    m_sensor.updateFrame();
+
+    // Note: once updateFrame() is called, all data is
+    // invalid until hasNewData() returns true.
+    if (m_sensor.hasNewData())
+    {
+        sprintf(output, "\nSensor Version: %d    Error Code: %d\n",
+                  m_sensor.getHWVersion(),
+                  m_sensor.getErrorCode());
+        Serial.print(output);
+
+        sprintf(output, "    PM1.0 (ug/m3): %2d     [atmos: %d]\n",
+                    m_sensor.getPM_1_0(),
+                    m_sensor.getPM_1_0_atmos());              
+        Serial.print(output);
+        sprintf(output, "    PM2.5 (ug/m3): %2d     [atmos: %d]\n",
+                    m_sensor.getPM_2_5(),
+                    m_sensor.getPM_2_5_atmos());
+        Serial.print(output);
+        sprintf(output, "    PM10  (ug/m3): %2d     [atmos: %d]\n",
+                    m_sensor.getPM_10_0(),
+                    m_sensor.getPM_10_0_atmos());              
+        Serial.print(output);
+
+        sprintf(output, "\n    RAW: %2d[>0.3] %2d[>0.5] %2d[>1.0] %2d[>2.5] %2d[>5.0] %2d[>10]\n",
+                    m_sensor.getRawGreaterThan_0_3(),
+                    m_sensor.getRawGreaterThan_0_5(),
+                    m_sensor.getRawGreaterThan_1_0(),
+                    m_sensor.getRawGreaterThan_2_5(),
+                    m_sensor.getRawGreaterThan_5_0(),
+                    m_sensor.getRawGreaterThan_10_0());
+        Serial.print(output);
+    }
 }
 
 void OwlWaveController::sendMessage(String message)

@@ -5,7 +5,7 @@
 #define RFM69_RST       11      // "A"
 #define RFM69_INT       6       // "D"
 #define LED             13
-#define HALL_RAIN       1
+#define HALL_RAIN       15      // A1
 
 // Change to 434.0 or other frequency, must match RX's freq!
 #define RF69_FREQ 915.69

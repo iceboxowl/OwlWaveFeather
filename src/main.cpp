@@ -34,6 +34,7 @@ void setup()
     attachInterrupt(digitalPinToInterrupt(HALL_RAIN), hallRainISM, RISING);
 
     owController.setupRadio();
+    owController.setupAQSensor();
 
     if (!bme.begin()) 
     {
@@ -75,6 +76,7 @@ void loop()
         }
 
         owController.sendRainMessage();
+        owController.sendAQMessage();
         loopCount = 0;
     }
 

@@ -5,16 +5,20 @@
 #include <RH_RF69.h>
 
 #include "ow_global.h"
+#include "plantower_pms7003.h"
 
 class OwlWaveController
 {    
 public:
     void setupRadio();
+    void setupAQSensor();
     void onRainTip();
     void calculateRainRate();
     void blink(byte PIN, byte DELAY_MS, byte loops);
     void sendBMEMessage(float temperature, float humidity, uint32_t pressure, uint32_t gas);
     void sendRainMessage(); 
+    void sendAQMessage();
+    void debugAQ();
     
 private:
     // -*-*-*-*-*-*-*-*-*-*-*-*-*-* //
@@ -31,7 +35,8 @@ private:
     float m_rainRate;         //!< Rain volume reported as in/hr.
     uint32_t m_rainTipMilli;  //!< The last time we got a rain tip (Milliseconds).
                               //!< This value resets if no tip is recieved in 1min.    
-    uint32_t m_lastRainTipMilli;                             
+    uint32_t m_lastRainTipMilli;
+    Plantower_PMS7003 m_sensor;
 };
 
 #endif // OWLWAVE_CONTROLLER_H
