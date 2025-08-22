@@ -4,6 +4,7 @@
 #include <Adafruit_Sensor.h>
 #include "Adafruit_BME680.h"
 #include <RH_RF69.h>
+#include <EEPROM.h>
 #include "ow_message_types.h"
 #include "ow_controller.h"
 #include "ow_global.h"
@@ -17,6 +18,10 @@ OwlWaveController owController; // For handling all logic
 
 uint8_t loopCount;      // How many times our loop iteration has run, within our MAX_LOOP_CYLE.
 uint32_t upTime;        // How many seconds our device has been on for.
+
+// start reading from the first byte (address 0) of the EEPROM
+int address = 0;
+byte value;
 
 // ISM's must be defined here, but can make calls into our Controller class.
 void hallRainISM()
@@ -54,6 +59,16 @@ void setup()
     delay(10);
     digitalWrite(RFM69_RST, LOW);
     delay(10);
+
+    //value = EEPROM.read(0);
+
+    // Serial.print(address);
+    // Serial.print("\t");
+    // Serial.print(value, DEC);
+    // Serial.println();
+
+    //EEPROM.write(address, EEPROM.length());
+
 }
 
 void loop() 
@@ -76,7 +91,6 @@ void loop()
         }
 
         owController.sendRainMessage();
-        owController.sendAQMessage();
         loopCount = 0;
     }
 

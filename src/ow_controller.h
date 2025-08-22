@@ -19,6 +19,7 @@ public:
     void sendRainMessage(); 
     void sendAQMessage();
     void debugAQ();
+    void updateAQ();
     
 private:
     // -*-*-*-*-*-*-*-*-*-*-*-*-*-* //

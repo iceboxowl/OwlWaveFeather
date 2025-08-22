@@ -105,7 +105,7 @@ void OwlWaveController::sendBMEMessage(float temperature, float humidity, uint32
     String messageTypeTemperature = String(OwlWaveMessageTypes::TEMPERATURE) + "=" + String(temperature, 2) + String(OW_MESSAGE_SEPERATOR);
     String messageTypeHumidity = String(OwlWaveMessageTypes::HUMIDITY) + "=" + String(humidity, 2) + String(OW_MESSAGE_SEPERATOR);
     String messageTypePressure = String(OwlWaveMessageTypes::PRESSURE) + "=" + String((pressure / 100.0), 2) + String(OW_MESSAGE_SEPERATOR);
-    String messageTypeGas = String(OwlWaveMessageTypes::GAS) + "=" + String((gas / 1000.0), 2);
+    String messageTypeGas = String(OwlWaveMessageTypes::GAS) + "=" + String((gas / 1000.0), 2) + String(" ");
 
     sendMessage(messageTypeTemperature + messageTypeHumidity + messageTypePressure + messageTypeGas);
 }
@@ -113,9 +113,14 @@ void OwlWaveController::sendBMEMessage(float temperature, float humidity, uint32
 void OwlWaveController::sendRainMessage()
 {
     String messageTypeRainTips = String(OwlWaveMessageTypes::RAINTIPS) + "=" + String(m_rainTips) + String(OW_MESSAGE_SEPERATOR);
-    String messageTypeRainRate = String(OwlWaveMessageTypes::RAINRATE) + "=" + String(m_rainRate, 4);
+    String messageTypeRainRate = String(OwlWaveMessageTypes::RAINRATE) + "=" + String(m_rainRate, 4) + String(" ");
 
     sendMessage(messageTypeRainTips + messageTypeRainRate);
+}
+
+void OwlWaveController::updateAQ()
+{
+    m_sensor.updateFrame();
 }
 
 void OwlWaveController::sendAQMessage()
@@ -128,9 +133,13 @@ void OwlWaveController::sendAQMessage()
     // invalid until hasNewData() returns true.
     if (m_sensor.hasNewData())
     {
-        String messageTypePM1 = String(OwlWaveMessageTypes::AIRQUALITY_PM1) + "=" + String(m_sensor.getPM_1_0()) + String(OW_MESSAGE_SEPERATOR);
-        String messageTypePM2_5 = String(OwlWaveMessageTypes::AIRQUALITY_PM2_5) + "=" + String(m_sensor.getPM_2_5()) + String(OW_MESSAGE_SEPERATOR);
-        String messageTypePM10 = String(OwlWaveMessageTypes::AIRQUALITY_PM10) + "=" + String(m_sensor.getPM_10_0());
+        uint16_t pm1 = m_sensor.getPM_1_0();
+        uint16_t pm2 = m_sensor.getPM_2_5();
+        uint16_t pm10 = m_sensor.getPM_10_0();
+
+        String messageTypePM1 = String(OwlWaveMessageTypes::AIRQUALITY_PM1) + "=" + String(pm1) + String(OW_MESSAGE_SEPERATOR);
+        String messageTypePM2_5 = String(OwlWaveMessageTypes::AIRQUALITY_PM2_5) + "=" + String(pm2) + String(OW_MESSAGE_SEPERATOR);
+        String messageTypePM10 = String(OwlWaveMessageTypes::AIRQUALITY_PM10) + "=" + String(pm10) + String(" ");
 
         sendMessage(messageTypePM1 + messageTypePM2_5 + messageTypePM10);
     }
@@ -187,5 +196,5 @@ void OwlWaveController::sendMessage(String message)
 
     m_rf69->send((uint8_t *)buffer, strlen(buffer));
     m_rf69->waitPacketSent();
-    blink(LED, 100, 2);
+    blink(LED, 50, 1);
 }
