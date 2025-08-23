@@ -50,42 +50,24 @@ void OwlWaveController::onRainTip()
 
 void OwlWaveController::setupRadio()
 {
-    m_rf69 = new RH_RF69(RFM69_CS, RFM69_INT);
+    if (!m_rf69) m_rf69 = new RH_RF69(RFM69_CS, RFM69_INT);
 
     if (!m_rf69->init()) 
     {
-      Serial.println("RFM69 radio init failed");
-      while (1);
+        Serial.println("RFM69 radio init failed");
+        return; // don't hang; main code can detect lack of radio
     }
+    m_radioInitialized = true;
     Serial.println("RFM69 radio init OK!");
-    // Defaults after init are 434.0MHz, modulation GFSK_Rb250Fd250, +13dbM (for low power module)
-    // No encryption
     if (!m_rf69->setFrequency(RF69_FREQ)) 
     {
-      Serial.println("setFrequency failed");
+        Serial.println("setFrequency failed");
     }
-
-    // If you are using a high power RF69 eg RFM69HW, you *must* set a Tx power with the
-    // ishighpowermodule flag set like this:
-    m_rf69->setTxPower(20, true);  // range from 14-20 for power, 2nd arg must be true for 69HCW
-
-    // The encryption key has to be the same as the one in the server
-    uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-                      0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+    m_rf69->setTxPower(m_txPower, true);  // 14-20 for HCW
+    uint8_t key[] = { 0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,
+                      0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08 };
     m_rf69->setEncryptionKey(key);
-
     Serial.print("RFM69 radio @");  Serial.print((int)RF69_FREQ);  Serial.println(" MHz");
-}
-
-void OwlWaveController::setupAQSensor()
-{
-    // Initialize the sensor with the serial device
-    // that it's connected to. Hardware Serial1 is the
-    // default, if no parameter is provided to init()
-
-    Serial1.begin(9600);    // Note: 9600 baud
-    m_sensor.init(&Serial1);
-    //m_sensor.debug = true;
 }
 
 void OwlWaveController::blink(byte PIN, byte DELAY_MS, byte loops) 
@@ -118,72 +100,6 @@ void OwlWaveController::sendRainMessage()
     sendMessage(messageTypeRainTips + messageTypeRainRate);
 }
 
-void OwlWaveController::updateAQ()
-{
-    m_sensor.updateFrame();
-}
-
-void OwlWaveController::sendAQMessage()
-{
-    // Use updateFrame() to read in sensor data in your
-    // loop until hasNewData() returns true.
-    m_sensor.updateFrame();
-
-    // Note: once updateFrame() is called, all data is
-    // invalid until hasNewData() returns true.
-    if (m_sensor.hasNewData())
-    {
-        uint16_t pm1 = m_sensor.getPM_1_0();
-        uint16_t pm2 = m_sensor.getPM_2_5();
-        uint16_t pm10 = m_sensor.getPM_10_0();
-
-        String messageTypePM1 = String(OwlWaveMessageTypes::AIRQUALITY_PM1) + "=" + String(pm1) + String(OW_MESSAGE_SEPERATOR);
-        String messageTypePM2_5 = String(OwlWaveMessageTypes::AIRQUALITY_PM2_5) + "=" + String(pm2) + String(OW_MESSAGE_SEPERATOR);
-        String messageTypePM10 = String(OwlWaveMessageTypes::AIRQUALITY_PM10) + "=" + String(pm10) + String(" ");
-
-        sendMessage(messageTypePM1 + messageTypePM2_5 + messageTypePM10);
-    }
-}
-
-void OwlWaveController::debugAQ()
-{
-        // Use updateFrame() to read in sensor data in your
-    // loop until hasNewData() returns true.
-    m_sensor.updateFrame();
-
-    // Note: once updateFrame() is called, all data is
-    // invalid until hasNewData() returns true.
-    if (m_sensor.hasNewData())
-    {
-        sprintf(output, "\nSensor Version: %d    Error Code: %d\n",
-                  m_sensor.getHWVersion(),
-                  m_sensor.getErrorCode());
-        Serial.print(output);
-
-        sprintf(output, "    PM1.0 (ug/m3): %2d     [atmos: %d]\n",
-                    m_sensor.getPM_1_0(),
-                    m_sensor.getPM_1_0_atmos());              
-        Serial.print(output);
-        sprintf(output, "    PM2.5 (ug/m3): %2d     [atmos: %d]\n",
-                    m_sensor.getPM_2_5(),
-                    m_sensor.getPM_2_5_atmos());
-        Serial.print(output);
-        sprintf(output, "    PM10  (ug/m3): %2d     [atmos: %d]\n",
-                    m_sensor.getPM_10_0(),
-                    m_sensor.getPM_10_0_atmos());              
-        Serial.print(output);
-
-        sprintf(output, "\n    RAW: %2d[>0.3] %2d[>0.5] %2d[>1.0] %2d[>2.5] %2d[>5.0] %2d[>10]\n",
-                    m_sensor.getRawGreaterThan_0_3(),
-                    m_sensor.getRawGreaterThan_0_5(),
-                    m_sensor.getRawGreaterThan_1_0(),
-                    m_sensor.getRawGreaterThan_2_5(),
-                    m_sensor.getRawGreaterThan_5_0(),
-                    m_sensor.getRawGreaterThan_10_0());
-        Serial.print(output);
-    }
-}
-
 void OwlWaveController::sendMessage(String message)
 {
     uint8_t messageLength = message.length();
@@ -194,7 +110,29 @@ void OwlWaveController::sendMessage(String message)
 
     Serial.print("Sending "); Serial.println(buffer); // Debug message;
 
-    m_rf69->send((uint8_t *)buffer, strlen(buffer));
-    m_rf69->waitPacketSent();
-    blink(LED, 50, 1);
+    if (m_radioInitialized && m_rf69)
+    {
+        m_rf69->send((uint8_t *)buffer, strlen(buffer));
+        m_rf69->waitPacketSent();
+    }
+}
+
+void OwlWaveController::sleepRadio()
+{
+    if (m_radioInitialized && m_rf69)
+    {
+        m_rf69->sleep(); // true low-power sleep (couple µA)
+    }
+}
+
+void OwlWaveController::wakeRadio()
+{
+    if (m_radioInitialized && m_rf69)
+    {
+        // Standby (modeIdle) wakes oscillator quickly
+        m_rf69->setModeIdle();
+        // Reapply critical params (defensive)
+        m_rf69->setFrequency(RF69_FREQ);
+        m_rf69->setTxPower(m_txPower, true);
+    }
 }

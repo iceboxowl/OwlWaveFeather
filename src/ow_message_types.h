@@ -16,9 +16,6 @@ public:
         RAINRATE                = 6,
         WIND_DIRECTION          = 7,
         WIND_SPEED              = 8,
-        AIRQUALITY_PM1          = 9,
-        AIRQUALITY_PM2_5        = 10,
-        AIRQUALITY_PM10         = 11,
     };
 };
 

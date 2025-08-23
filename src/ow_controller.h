@@ -5,21 +5,19 @@
 #include <RH_RF69.h>
 
 #include "ow_global.h"
-#include "plantower_pms7003.h"
 
 class OwlWaveController
 {    
 public:
     void setupRadio();
-    void setupAQSensor();
+    //void setupAQSensor();
     void onRainTip();
     void calculateRainRate();
     void blink(byte PIN, byte DELAY_MS, byte loops);
     void sendBMEMessage(float temperature, float humidity, uint32_t pressure, uint32_t gas);
     void sendRainMessage(); 
-    void sendAQMessage();
-    void debugAQ();
-    void updateAQ();
+    void sleepRadio();
+    void wakeRadio();
     
 private:
     // -*-*-*-*-*-*-*-*-*-*-*-*-*-* //
@@ -30,14 +28,14 @@ private:
     // -*-*-*-*-*-*-*-*-*-*-*-*-*-* //
     //      Private Members         //
     // -*-*-*-*-*-*-*-*-*-*-*-*-*-* //
-    RH_RF69 *m_rf69;          //!< RFM69 Radio Class.
-    uint32_t m_rainTips;      //!< How many times our rain tipper has tipped.
-    bool m_rateDecay;         //!< Should our rain rate decay.
-    float m_rainRate;         //!< Rain volume reported as in/hr.
-    uint32_t m_rainTipMilli;  //!< The last time we got a rain tip (Milliseconds).
-                              //!< This value resets if no tip is recieved in 1min.    
-    uint32_t m_lastRainTipMilli;
-    Plantower_PMS7003 m_sensor;
+    RH_RF69 *m_rf69 = nullptr;       //!< RFM69 Radio Class.
+    bool m_radioInitialized = false; //!< Tracks successful radio init.
+    uint8_t m_txPower = 20;          //!< Cached TX power setting.
+    volatile uint32_t m_rainTips;    //!< Updated inside interrupt.
+    volatile bool m_rateDecay;       //!< Updated inside interrupt.
+    float m_rainRate;                //!< Rain volume reported as in/hr.
+    volatile uint32_t m_rainTipMilli;//!< Last rain tip time (millis()).
+    volatile uint32_t m_lastRainTipMilli;
 };
 
 #endif // OWLWAVE_CONTROLLER_H
