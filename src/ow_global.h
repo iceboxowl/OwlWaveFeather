@@ -1,21 +1,21 @@
-#ifndef OWLWAVE_GLOBAL_H
-#define OWLWAVE_GLOBAL_H
+// #ifndef OWLWAVE_GLOBAL_H
+// #define OWLWAVE_GLOBAL_H
 
-#define RFM69_CS        10      // "B"
-#define RFM69_RST       11      // "A"
-#define RFM69_INT       6       // "D"
-#define LED             13
-#define HALL_RAIN       15      // A1
+// #define RFM69_CS        10      // "B"
+// #define RFM69_RST       11      // "A"
+// #define RFM69_INT       6       // "D"
+// #define LED             13
+// #define REED_RAIN_PIN   12      // Using D12 for reed sensor (magnet-triggered)
 
-// Change to 434.0 or other frequency, must match RX's freq!
-#define RF69_FREQ 915.69
-#define RAIN_TIP_AMOUNT 0.01 // Each rain tip is equal to this amount.
+// // Change to 434.0 or other frequency, must match RX's freq!
+// #define RF69_FREQ 915.69
+// #define RAIN_TIP_AMOUNT 0.01 // Each rain tip is equal to this amount.
 
-#define BME_SCK 13
-#define BME_MISO 12
-#define BME_MOSI 11
-#define BME_CS 10
+// #define BME_SCK 13
+// #define BME_MISO 12
+// #define BME_MOSI 11
+// #define BME_CS 10
 
-#define MAX_LOOP_CYCLE 20 // How many loops(1s for each loop) before sending temperature message.
+// #define MAX_LOOP_CYCLE 20 // How many loops(1s for each loop) before sending temperature message.
 
-#endif //OWLWAVE_GLOBAL_H
+// #endif //OWLWAVE_GLOBAL_H

@@ -1,192 +1,229 @@
-// Clean rebuilt main.cpp after corruption
+#include "Arduino.h"
+#include "LoRa_APP.h"
+#include "CubeCell_NeoPixel.h"
+#include "ow_bme.h"
+#include "ow_lora.h"
 
-#include <Arduino.h>
-#include <Wire.h>
-#include <SPI.h>
-#include <Adafruit_Sensor.h>
-#include "Adafruit_BME680.h"
-#include <RH_RF69.h>
-#include "ow_message_types.h"
-#include "ow_controller.h"
-#include "ow_global.h"
+static TimerEvent_t sleepTimer;
+static uint8_t lowPowerMode = 1;
+static volatile uint32_t rainTips = 0;
+static volatile uint32_t lastRainTipTime = 0;
+static float rainRate = 0.0f;
+static bool serialReady = true;  // track if Serial was initialized
 
-#if defined(ARDUINO_AVR_FEATHER32U4)
-#include <EEPROM.h>
-#endif
+// OPTIONAL: comment this out (or set to 0) for real low-power
+#define DEBUG_SERIAL 1
+#define WAKEUP_PIN GPIO0
+#define TIMETILL_SLEEP 2400
 
-#include <Adafruit_SleepyDog.h>
+CubeCell_NeoPixel rgbPixel(1, RGB, NEO_GRB + NEO_KHZ800);
+static OwBme bme;
+static OwLora lora;
+static bool bmeReady = false;
 
-// Debug / Power configuration
-#define DEBUG_VERBOSE 1          // Set 0 to silence nearly all Serial prints
-#define DEBUG_NO_SLEEP 0         // Set 1 to disable actual low power sleeps (for debugging timing)
-#define DIAG_SKIP_BME 0          // Set 1 to skip BME sensor usage
-#define SEND_INTERVAL_MS 20000UL // 20s cadence
-// OW_LOWPOWER_DETACH_USB removed - USB detach optimization disabled
+// Function to blink the LED
+void blinkLED(uint8_t pin = Vext, uint8_t delayMs = 240, uint8_t loops = 1) {
+    rgbPixel.clear();
+    delay(delayMs);
 
-#if DEBUG_VERBOSE
-    #define DBG_PRINT(x)   Serial.print(x)
-    #define DBG_PRINTLN(x) Serial.println(x)
-#else
-    #define DBG_PRINT(x)
-    #define DBG_PRINTLN(x)
-#endif
+    // Dark Purple
+    rgbPixel.setPixelColor(0, rgbPixel.Color(30, 0, 60));
+    rgbPixel.show();
+    delay(delayMs);
 
-// Track elapsed time toward next send using watchdog reported sleep (robust if millis pauses in standby)
-static uint32_t elapsedSinceSendMs = 0;
-static uint32_t lastActiveMillis = 0; // for diagnostic only
-
-Adafruit_BME680 bme;
-OwlWaveController owController;
-
-// Forward declarations
-//static void prepareForSleep();
-//static void restoreAfterSleep();
-
-void hallRainISM() { owController.onRainTip(); }
-
-/**
- * @brief Puts the system into low-power sleep mode for a specified duration in milliseconds.
- *
- * This function attempts to sleep for the given number of milliseconds using the Watchdog timer,
- * accumulating the actual sleep duration. If debugging mode is enabled (DEBUG_NO_SLEEP), it uses
- * a simple delay instead. The radio is put to sleep before sleeping and woken up afterwards.
- *
- * @param ms The number of milliseconds to sleep. If zero, the function returns immediately.
- */
-static void lowPowerSleepMs(uint32_t ms)
-{
-    if (ms == 0) return;
-    if (DEBUG_NO_SLEEP) { delay(ms); elapsedSinceSendMs += ms; return; }
-
-    owController.sleepRadio();
-
-    uint32_t slept = 0;
-    while (slept < ms)
-    {
-        uint32_t remaining = ms - slept;
-        // SleepyDog caps internally (SAMD will enter standby between WDT interrupts)
-        uint32_t actual = Watchdog.sleep(remaining);
-        if (actual == 0) break; // safety
-        slept += actual;
-    }
-    elapsedSinceSendMs += slept; // accumulate actual sleep duration
-
-    owController.wakeRadio();
+    rgbPixel.clear();
+    rgbPixel.show();  // Ensure the LED turns off
+    delay(delayMs);
 }
 
-static void performSend()
-{
-    DBG_PRINTLN(F("-- Send Cycle --"));
-    // Visual indicator: brief LED blink on Feather to show a send is occurring (only during debug)
-#if DEBUG_VERBOSE
-    digitalWrite(LED, HIGH);
-    delay(60);
-#endif
-    DBG_PRINTLN(F("[SEND] wakeRadio"));
-    owController.wakeRadio();
-    DBG_PRINTLN(F("[SEND] calcRainRate"));
-    owController.calculateRainRate();
-    if (!DIAG_SKIP_BME)
-    {
-        DBG_PRINTLN(F("[SEND] BME performReading"));
-        if (bme.performReading())
-        {
-            DBG_PRINTLN(F("[SEND] BME ok"));
-            owController.sendBMEMessage(bme.temperature, bme.humidity, bme.pressure, bme.gas_resistance);
-        }
-        else
-        {
-            DBG_PRINTLN(F("[ERR] BME680 read fail"));
-        }
-        // Ensure gas heater is disabled between cycles to save power
-        bme.setGasHeater(0,0);
+// Function to calculate rain decay
+void calculateRainRate(uint32_t currentTimeMs) {
+    if (lastRainTipTime == 0 || (currentTimeMs - lastRainTipTime) > 300000UL) {
+        rainRate = 0.0f;
+    } else {
+        uint32_t timeDiff = currentTimeMs - lastRainTipTime;
+        rainRate = (3600000.0f / timeDiff) * rainTips;
     }
-    DBG_PRINTLN(F("[SEND] sendRainMessage"));
-    owController.sendRainMessage();
-    DBG_PRINTLN(F("[SEND] sleepRadio"));
-    owController.sleepRadio();
-    DBG_PRINTLN(F("[SEND] done"));
-#if DEBUG_VERBOSE
-    digitalWrite(LED, LOW);
+}
+
+// Build & send weather payload (fits in <=128 bytes)
+static void sendWeatherPacket(const OwBmeReading& r) {
+    char buf[120];
+    // r.gasKOhms may be 0 if not ready; safe
+    snprintf(buf, sizeof(buf),
+             "T=%.2fC,H=%.2f%%,P=%.2fhPa,Gas=%.3fk,rTips=%lu,rRate=%.3f/hr",
+             r.temperatureC, r.humidityPct, r.pressureHpa, r.gasKOhms,
+             (unsigned long)rainTips, rainRate);
+    lora.send(buf);
+}
+
+// Re-init Serial after wake (CubeCell deep sleep powers down USB/UART)
+static void reinitSerial() {
+    if (serialReady) return;  // already up
+    Serial.begin(115200);
+    delay(50);  // allow port to enumerate/stabilize
+    serialReady = true;
+}
+
+// Helper: put radio & peripherals into lowest state
+static void enterPeripheralsSleep() {
+#if DEBUG_SERIAL
+    Serial.println("Peripherals -> sleep");
+#endif
+    // Turn off NeoPixel (send 'off', then release data pin)
+    rgbPixel.clear();
+    rgbPixel.show();
+    // Cut Vext power (HIGH = OFF on CubeCell)
+    digitalWrite(Vext, HIGH);
+
+    // Put LoRa radio to sleep
+    Radio.Sleep();
+
+    // Set all unused GPIOs to INPUT (no pull) or analog to reduce leakage
+    // (Example – adjust for your wiring; avoid WAKEUP_PIN)
+    // pinMode(GPIO1, INPUT);
+    // pinMode(GPIO2, INPUT);
+}
+
+// Helper: wake peripherals
+static void exitPeripheralsSleep() {
+    // Re‑enable Vext (LOW = ON)
+    digitalWrite(Vext, LOW);
+    delay(2);
+    rgbPixel.begin();
+    rgbPixel.clear();
+    rgbPixel.show();
+    // Radio will be reconfigured by your send routine as needed
+#if DEBUG_SERIAL
+    Serial.println("Peripherals -> wake");
 #endif
 }
 
-// Configure pins & peripherals for lowest practical consumption before sleeping
-// static void prepareForSleep()
-// {
-//     // Turn LED off
-//     pinMode(LED, OUTPUT);
-//     digitalWrite(LED, LOW);
-
-//     // Radio lines: keep CS high, RST low, INT input with pullup (match existing wiring expectations)
-//     pinMode(RFM69_CS, OUTPUT); digitalWrite(RFM69_CS, HIGH);
-//     pinMode(RFM69_RST, OUTPUT); digitalWrite(RFM69_RST, LOW);
-//     pinMode(RFM69_INT, INPUT_PULLUP);
-
-//     // (USB detach moved to loop() after grace period to avoid upload issues)
-
-//     // Additional peripheral gating (SAMD21) – disable ADC if not used
-// // #if defined(ARDUINO_ARCH_SAMD)
-// //     ADC->CTRLA.bit.ENABLE = 0; while (ADC->STATUS.bit.SYNCBUSY); // disable ADC
-// // #endif
-
-//     // (no SPI/I2C shutdown optimizations enabled)
-//     DBG_PRINTLN(F("[PREPARE] sleep completed"));
-// }
-
-// // Restore any peripherals after waking (only what we disabled explicitly)
-// static void restoreAfterSleep()
-// {
-// #if defined(ARDUINO_ARCH_SAMD)
-//     // Re-enable ADC for future sensor reads if BME (I2C) doesn't need it; leave disabled if not needed
-//     // (BME680 over I2C doesn't use ADC; keep it off for power saving.)
-// #endif
-// }
-
-void setup()
-{
-    Serial.begin(9600);
-#if defined(ARDUINO_SAMD_ZERO) || defined(ARDUINO_SAMD_FEATHER_M0) || defined(ARDUINO_ARCH_SAMD)
-    uint32_t start = millis();
-    while (!Serial && (millis()-start)<4000) {}
-#endif
-    DBG_PRINTLN(F("Boot"));
-    pinMode(LED, OUTPUT);
-    pinMode(HALL_RAIN, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(HALL_RAIN), hallRainISM, FALLING);
-    owController.setupRadio();
-
-    if (!DIAG_SKIP_BME)
-    {
-        if (!bme.begin())
-        {
-            DBG_PRINTLN(F("[ERR] BME680 not found"));
-        } else {
-            bme.setTemperatureOversampling(BME680_OS_8X);
-            bme.setHumidityOversampling(BME680_OS_2X);
-            bme.setPressureOversampling(BME680_OS_4X);
-            bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
-            bme.setGasHeater(320, 150);
-        }
-    }
-    performSend();
-    elapsedSinceSendMs = 0;
-    lastActiveMillis = millis();
+// Minimal ISR (keep extremely short)
+void rainTipISR() {
+    rainTips++;
+    lastRainTipTime = millis();
+    // Just clear lowPowerMode flag and let main loop handle wake work
+    lowPowerMode = 0;
 }
 
-void loop()
-{
-    // If not using DEBUG_NO_SLEEP, millis may not advance during deep standby on SAMD.
-    // Use elapsedSinceSendMs (watchdog-based) as primary scheduler.
+// After wake processing (call once when lowPowerMode just cleared)
+static void handleWake() {
+    exitPeripheralsSleep();
 
-    if (elapsedSinceSendMs >= SEND_INTERVAL_MS)
-    {
-        DBG_PRINTLN(F("=== Cycle ==="));
-        performSend();
-        elapsedSinceSendMs = 0;
-        lastActiveMillis = millis();
+#if DEBUG_SERIAL
+    if (!serialReady) {
+        Serial.begin(115200);
+        delay(50);
+        serialReady = true;
+        Serial.println("Woke (handleWake).");
+    }
+#endif
+
+    if (!bmeReady) {
+        // Attempt re-init if power gated earlier
+        bmeReady = bme.begin();
     }
 
-    uint32_t remaining = (elapsedSinceSendMs < SEND_INTERVAL_MS) ? (SEND_INTERVAL_MS - elapsedSinceSendMs) : 0;
-    lowPowerSleepMs(remaining);
+    OwBmeReading reading{};
+    if (bmeReady) {
+        reading = bme.readAll();
+#if DEBUG_SERIAL
+        Serial.print("BME T=");
+        Serial.print(reading.temperatureC, 2);
+        Serial.print("C / ");
+        Serial.print(reading.temperatureC * 9.0 / 5.0 + 32.0, 2);
+        Serial.print("F ");
+        Serial.print("C H=");
+        Serial.print(reading.humidityPct, 2);
+        Serial.print("% P=");
+        Serial.print(reading.pressureHpa, 2);
+        Serial.print("m Gas=");
+        Serial.print(reading.gasKOhms, 3);
+        Serial.println("kOhm");
+#endif
+    }
+
+#if DEBUG_SERIAL
+    Serial.print("rainTips=");
+    Serial.println(rainTips);
+#endif
+
+    // Send combined weather packet over LoRa
+    if (lora.initialized() && lora.idle()) {
+        sendWeatherPacket(reading);
+    } else {
+#if DEBUG_SERIAL
+        Serial.println("LoRa busy or not init; skip send");
+#endif
+    }
+
+    TimerSetValue(&sleepTimer, TIMETILL_SLEEP);
+    TimerStart(&sleepTimer);
+}
+
+// Function to handle sleep
+void onSleep() {
+#if DEBUG_SERIAL
+    Serial.println("Entering low-power mode.");
+    Serial.flush();
+#endif
+    lowPowerMode = 1;
+    serialReady = false;
+
+    enterPeripheralsSleep();
+
+    // (Nothing else – lowPowerHandler() will drop MCU current)
+}
+
+void setup() {
+#if DEBUG_SERIAL
+    Serial.begin(115200);
+    delay(200);
+    Serial.println("Boot");
+#endif
+
+    pinMode(Vext, OUTPUT);
+    digitalWrite(Vext, LOW);  // Power ON initially (Vext LOW = ON)
+
+    rgbPixel.begin();
+    rgbPixel.clear();
+    rgbPixel.show();
+
+    // Init BME680
+    bmeReady = bme.begin();
+#if DEBUG_SERIAL
+    Serial.print("BME init: ");
+    Serial.println(bmeReady ? "OK" : "FAIL");
+#endif
+
+    // Init LoRa
+    lora.begin();
+
+    pinMode(WAKEUP_PIN, INPUT_PULLUP);
+    attachInterrupt(WAKEUP_PIN, rainTipISR, FALLING);
+
+    TimerInit(&sleepTimer, onSleep);
+    TimerSetValue(&sleepTimer, TIMETILL_SLEEP);
+    TimerStart(&sleepTimer);
+
+#if DEBUG_SERIAL
+    Serial.println("Setup complete.");
+#endif
+}
+
+void loop() {
+    // If just woke (lowPowerMode was cleared by ISR), process wake tasks once
+    static uint8_t lastLowPower = 1;
+    if (lastLowPower == 1 && lowPowerMode == 0) {
+        handleWake();
+    }
+    lastLowPower = lowPowerMode;
+
+    if (lowPowerMode) {
+        lowPowerHandler();  // enters deep sleep until interrupt / timer
+    }
+
+    // Optional small idle
+    delay(1);
 }
